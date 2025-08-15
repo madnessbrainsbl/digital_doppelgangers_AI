@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # PostgreSQL База данных для проекта v2
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rest_express_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Основной проект (Vite Frontend)
+  digital-twin-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:5173"
+    environment:
+      # Supabase Configuration
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL:-https://npvowekjxsjubvaudaaj.supabase.co}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdm93ZWtqeHNqdWJ2YXVkYWFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk3MzEwMjIsImV4cCI6MjA2NTMwNzAyMn0.imAgq4PTkJdrdXsNCNnmTrGfNIdLOYVfsdCWWtvzfQY}
+      
+      # Gemini Configuration (заменили OpenAI)
+      - VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
+      
+      # ElevenLabs Configuration
+      - VITE_ELEVENLABS_API_KEY=${VITE_ELEVENLABS_API_KEY}
+      
+      # Telegram API Configuration
+      - VITE_TELEGRAM_API_ID=${VITE_TELEGRAM_API_ID:-27479925}
+      - VITE_TELEGRAM_API_HASH=${VITE_TELEGRAM_API_HASH:-5b8b0cf0bbe783b22a901554e5b4b345}
+      
+      # Node Environment
+      - NODE_ENV=development
+    volumes:
+      # Монтируем исходный код для hot reload
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./index.html:/app/index.html
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Проект v2 (Express Backend)
+  rest-express-backend:
+    build:
+      context: ./v2
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"    # Express server
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      # Database configuration
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/rest_express_db
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=rest_express_db
+    volumes:
+      # Монтируем исходный код для hot reload
+      - ./v2/server:/app/server
+      - ./v2/src:/app/src
+      - ./v2/public:/app/public
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

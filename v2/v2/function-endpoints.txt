@@ -1,0 +1,108 @@
+// Этот код нужно вставить в server/routes.ts перед блоком app.delete("/api/assistants/:id"
+
+// Обработчик PATCH запроса для function-assistants
+app.patch("/api/function-assistants/:id", authenticateToken, async (req, res) => {
+  try {
+    const connectionId = parseInt(req.params.id);
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({ error: "Пользователь не авторизован" });
+    }
+    
+    if (isNaN(connectionId)) {
+      return res.status(400).json({ error: "Некорректный ID связи" });
+    }
+    
+    const connection = await storageInstance.getFunctionAssistant(connectionId);
+    if (!connection) {
+      return res.status(404).json({ error: "Связь не найдена" });
+    }
+    
+    // Получаем ассистента, чтобы проверить права доступа
+    const assistant = await storageInstance.getAssistant(connection.assistantId);
+    if (!assistant) {
+      return res.status(404).json({ error: "Ассистент не найден" });
+    }
+    
+    // Проверяем права доступа
+    const user = await storageInstance.getUser(userId);
+    if (assistant.createdBy !== userId && user?.role !== 'admin') {
+      return res.status(403).json({ error: "Нет прав на редактирование этой связи" });
+    }
+    
+    const { notificationChannelId, enabled, channelEnabled, settings } = req.body;
+    const updateData: Partial<InsertFunctionAssistant> = {};
+    
+    if (notificationChannelId !== undefined) {
+      // Проверяем, существует ли канал оповещений
+      const channel = await storageInstance.getNotificationChannel(notificationChannelId);
+      if (!channel) {
+        return res.status(404).json({ error: "Канал оповещений не найден" });
+      }
+      updateData.notificationChannelId = notificationChannelId;
+    }
+    
+    if (enabled !== undefined) updateData.enabled = enabled;
+    if (channelEnabled !== undefined) {
+      console.log(`[DEBUG] Обновление статуса канала для связи ${connectionId}: ${channelEnabled}`);
+      updateData.channelEnabled = channelEnabled;
+    }
+    if (settings !== undefined) updateData.settings = settings;
+    
+    const updatedConnection = await storageInstance.updateFunctionAssistant(connectionId, updateData);
+    
+    // Проверяем, если запрос обновляет только channelEnabled (без изменения enabled),
+    // то не нужно вызывать OpenAI API для обновления функций
+    if (Object.keys(req.body).length === 1 && channelEnabled !== undefined && enabled === undefined) {
+      console.log(`[DEBUG] Обновление только статуса канала для связи ${connectionId}, пропускаем вызов OpenAI API`);
+      return res.json({
+        ...updatedConnection,
+        success: true
+      });
+    }
+    
+    // Создаем экземпляр обновления функций
+    const updater = new FunctionToolsUpdater(storageInstance);
+    
+    // Если функция включена, используем addSingleFunction
+    if (enabled === true) {
+      // Добавляем только одну конкретную функцию
+      const addResult = await updater.addSingleFunction(connection.assistantId, connection.functionId);
+      console.log(`[DEBUG] Результат добавления функции ${connection.functionId} для ассистента ${connection.assistantId}:`, 
+        JSON.stringify(addResult, null, 2)
+      );
+      
+      res.json({
+        ...updatedConnection,
+        syncResult: {
+          success: addResult.success,
+          changes: {
+            added: addResult.added ? [addResult.functionName] : [],
+            removed: []
+          }
+        }
+      });
+    } else if (enabled === false) {
+      // Если функция отключена, используем полную синхронизацию для удаления
+      const syncResult = await updater.syncAssistantFunctions(connection.assistantId);
+      console.log(`[DEBUG] Результат синхронизации функций для ассистента ${connection.assistantId}:`, 
+        JSON.stringify(syncResult, null, 2)
+      );
+      
+      res.json({
+        ...updatedConnection,
+        syncResult
+      });
+    } else {
+      // Если enabled не изменился, просто возвращаем обновленную связь
+      res.json({
+        ...updatedConnection,
+        success: true
+      });
+    }
+  } catch (error) {
+    console.error("Ошибка при обновлении связи ассистента с функцией:", error);
+    res.status(500).json({ error: getErrorMessage(error) });
+  }
+}); 

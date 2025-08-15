@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Асиссто - Платформа AI-ассистентов</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzYzNjZGMSIgZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyczQuNDggMTAgMTAgMTAgMTAtNC40OCAxMC0xMFMxNy41MiAyIDEyIDJ6bTAgMThjLTQuNDEgMC04LTMuNTktOC04czMuNTktOCA4LTggOCAzLjU5IDggOC0zLjU5IDgtOCA4em0zLjg4LTExLjcxTDEwIDE0LjE3bC0xLjg4LTEuODhhLjk5Ni45OTYgMCAxIDAtMS40MSAxLjQxbDIuNTkgMi41OWMuMzkuMzkgMS4wMi4zOSAxLjQxIDBsNi41OS02LjU5YS45OTYuOTk2IDAgMSAwLTEuNDEtMS40MXoiLz48L3N2Zz4="
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Виджет чата -->
+    <script>
+      // Получаем ID канала из переменной окружения через глобальный объект
+      fetch("/api/env/WEB_CHAT_CHANNEL_ID")
+        .then((response) => response.json())
+        .then((data) => {
+          if (data && data.value) {
+            const channelId = data.value;
+
+            // Получаем настройки виджета из канала
+            fetch(`/api/channels/${channelId}/widget-code`)
+              .then((response) => response.json())
+              .then((widgetData) => {
+                // Загружаем скрипт виджета
+                const scriptElement = document.createElement("script");
+                scriptElement.src = `/api/channels/${channelId}/widget.js`;
+                document.body.appendChild(scriptElement);
+
+                // Инициализируем чат после загрузки скрипта
+                scriptElement.onload = function () {
+                  // Парсим настройки из кода виджета
+                  try {
+                    // Используем регулярное выражение для извлечения объекта настроек
+                    const optionsMatch = widgetData.code.match(
+                      /chatInit\(\d+,\s*(\{[^}]+\})/
+                    );
+                    if (optionsMatch && optionsMatch[1]) {
+                      // Преобразуем строку настроек в объект JavaScript
+                      const optionsStr = optionsMatch[1]
+                        .replace(
+                          /primaryColor:\s*"([^"]+)"/,
+                          'primaryColor: "$1"'
+                        )
+                        .replace(/position:\s*"([^"]+)"/, 'position: "$1"')
+                        .replace(/headerText:\s*"([^"]+)"/, 'headerText: "$1"')
+                        .replace(/fontSize:\s*"([^"]+)"/, 'fontSize: "$1"')
+                        .replace(/iconUrl:\s*"([^"]+)"/, 'iconUrl: "$1"');
+
+                      // Создаем объект настроек с помощью Function constructor
+                      const options = Function("return " + optionsStr)();
+
+                      // Инициализируем чат с настройками из канала
+                      chatInit(channelId, options);
+                    } else {
+                      // Если не удалось извлечь настройки, используем дефолтные
+                      chatInit(channelId, {
+                        primaryColor: "#3B82F6",
+                        position: "bottom-right",
+                        headerText: "Онлайн-чат",
+                        fontSize: "14px",
+                        iconUrl: `/robot-icon.svg`,
+                      });
+                    }
+                  } catch (err) {
+                    console.error("Ошибка при парсинге настроек виджета:", err);
+                    // Используем дефолтные настройки в случае ошибки
+                    chatInit(channelId, {
+                      primaryColor: "#3B82F6",
+                      position: "bottom-right",
+                      headerText: "Онлайн-чат",
+                      fontSize: "14px",
+                      iconUrl: `/robot-icon.svg`,
+                    });
+                  }
+                };
+              })
+              .catch((err) => {
+                console.error("Ошибка при получении настроек виджета:", err);
+                // В случае ошибки используем стандартные настройки
+                const scriptElement = document.createElement("script");
+                scriptElement.src = `/api/channels/${channelId}/widget.js`;
+                document.body.appendChild(scriptElement);
+
+                scriptElement.onload = function () {
+                  chatInit(channelId, {
+                    primaryColor: "#3B82F6",
+                    position: "bottom-right",
+                    headerText: "Онлайн-чат",
+                    fontSize: "14px",
+                    iconUrl: `/robot-icon.svg`,
+                  });
+                };
+              });
+          }
+        })
+        .catch((error) =>
+          console.error("Ошибка при получении ID канала:", error)
+        );
+    </script>
+    <!-- Yandex.Metrika counter -->
+    <script type="text/javascript">
+      (function (m, e, t, r, i, k, a) {
+        m[i] =
+          m[i] ||
+          function () {
+            (m[i].a = m[i].a || []).push(arguments);
+          };
+        m[i].l = 1 * new Date();
+        for (var j = 0; j < document.scripts.length; j++) {
+          if (document.scripts[j].src === r) {
+            return;
+          }
+        }
+        (k = e.createElement(t)),
+          (a = e.getElementsByTagName(t)[0]),
+          (k.async = 1),
+          (k.src = r),
+          a.parentNode.insertBefore(k, a);
+      })(
+        window,
+        document,
+        "script",
+        "https://mc.yandex.ru/metrika/tag.js",
+        "ym"
+      );
+
+      ym(99206653, "init", {
+        clickmap: true,
+        trackLinks: true,
+        accurateTrackBounce: true,
+        webvisor: true,
+      });
+    </script>
+    <noscript
+      ><div>
+        <img
+          src="https://mc.yandex.ru/watch/99206653"
+          style="position: absolute; left: -9999px"
+          alt=""
+        /></div
+    ></noscript>
+    <!-- /Yandex.Metrika counter -->
+  </body>
+</html>

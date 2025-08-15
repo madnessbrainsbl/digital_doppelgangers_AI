@@ -1,0 +1,13 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+*.zip
+attached_assets/*.zip
+attached_assets/llcibs-main.zip
+attached_assets/Платформа на repl v14.zip
+llcibs-extracted
+.env
+server/logs/*

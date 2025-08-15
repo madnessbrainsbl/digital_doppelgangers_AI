@@ -1,0 +1,11 @@
+  // Обработчик PATCH запроса для function-assistants
+  app.patch("/api/function-assistants/:id", authenticateToken, async (req, res) => {
+    try {
+      const connectionId = parseInt(req.params.id);
+      const userId = req.user?.id;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Пользователь не авторизован" });
+      }
+      
+      if (isNaN(connectionId)) {

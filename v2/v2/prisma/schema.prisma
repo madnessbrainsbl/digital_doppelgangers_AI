@@ -1,0 +1,180 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Модель пользователя
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  password     String
+  email        String   @unique
+  fullName     String
+  role         String // admin, manager, referral, user
+  isActive     Boolean  @default(true)
+  registeredAt DateTime @default(now())
+  plan         String?
+  totalSpent   Float?
+
+  // Реферальная система
+  referrerId Int?
+  managerId  Int?
+
+  // Отношения для реферальной системы
+  referredUsers   User[]                @relation("ReferredUsers")
+  referrer        User?                 @relation("ReferredUsers", fields: [referrerId], references: [id])
+  managedUsers    User[]                @relation("ManagedUsers")
+  manager         User?                 @relation("ManagedUsers", fields: [managerId], references: [id])
+  
+  // Отношения с другими моделями
+  createdAssistants      Assistant[]           @relation("CreatedAssistants") 
+  conversations          Conversation[]        @relation("UserConversations")
+  messages               Message[]             @relation("UserMessages")
+  knowledgeItems         KnowledgeItem[]       @relation("UserKnowledgeItems")
+  asReferrerTransactions ReferralTransaction[] @relation("ReferrerTransactions")
+  asManagerTransactions  ReferralTransaction[] @relation("ManagerTransactions")
+  userTransactions       ReferralTransaction[] @relation("UserTransactions")
+  activityLogs           ActivityLog[]         @relation("UserActivityLogs")
+}
+
+// Модель ассистента
+model Assistant {
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+  avatarUrl   String?
+  iconType    String? // Тип иконки из ASSISTANT_ICONS
+  creatorId   Int?
+  systemPrompt String? @db.Text
+  isActive    Boolean @default(true)
+  modelName   String? // Название модели OpenAI или другой
+  temperature Float?  @default(0.7)
+
+  // Отношения
+  creator         User?          @relation("CreatedAssistants", fields: [creatorId], references: [id])
+  conversations   Conversation[] @relation("AssistantConversations")
+  messages        Message[]      @relation("AssistantMessages") 
+  knowledgeItems  KnowledgeItem[] @relation("AssistantKnowledgeItems")
+  activityLogs    ActivityLog[]  @relation("AssistantActivityLogs")
+}
+
+// Модель элемента базы знаний
+model KnowledgeItem {
+  id             Int      @id @default(autoincrement())
+  title          String
+  description    String?
+  fileType       String?  // pdf, doc, etc.
+  fileSize       Int?     // размер в байтах
+  fileUrl        String?
+  content        String?  @db.Text
+  uploaderId     Int?
+  assistantId    Int?
+  uploadedAt     DateTime @default(now())
+  lastUpdatedAt  DateTime @updatedAt
+
+  // Отношения
+  uploader    User?      @relation("UserKnowledgeItems", fields: [uploaderId], references: [id])
+  assistant   Assistant? @relation("AssistantKnowledgeItems", fields: [assistantId], references: [id])
+}
+
+// Модель канала коммуникации
+model Channel {
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+  type        String  // web, telegram, whatsapp, etc.
+  isActive    Boolean @default(true)
+  config      Json?   // Конфигурация канала в формате JSON
+
+  // Отношения
+  conversations Conversation[] @relation("ChannelConversations")
+}
+
+// Модель разговора
+model Conversation {
+  id          Int      @id @default(autoincrement())
+  title       String?
+  userId      Int?
+  assistantId Int?
+  channelId   Int?
+  startedAt   DateTime @default(now())
+  lastMessageAt DateTime @updatedAt
+  isActive    Boolean  @default(true)
+
+  // Отношения
+  user      User?      @relation("UserConversations", fields: [userId], references: [id])
+  assistant Assistant? @relation("AssistantConversations", fields: [assistantId], references: [id])
+  channel   Channel?   @relation("ChannelConversations", fields: [channelId], references: [id])
+  messages  Message[]  @relation("ConversationMessages")
+}
+
+// Модель сообщения
+model Message {
+  id             Int      @id @default(autoincrement())
+  content        String   @db.Text
+  role           String   // user, assistant, system
+  userId         Int?
+  assistantId    Int?
+  conversationId Int
+  timestamp      DateTime @default(now())
+  metadata       Json?    // Дополнительные метаданные в формате JSON
+
+  // Отношения
+  user         User?         @relation("UserMessages", fields: [userId], references: [id])
+  assistant    Assistant?    @relation("AssistantMessages", fields: [assistantId], references: [id])
+  conversation Conversation  @relation("ConversationMessages", fields: [conversationId], references: [id])
+}
+
+// Модель метрик
+model Metric {
+  id               Int      @id @default(autoincrement())
+  date             DateTime @default(now())
+  totalConversations Int    @default(0)
+  totalMessages    Int      @default(0)
+  activeUsers      Int      @default(0)
+  avgResponseTime  Float?
+  customMetrics    Json?    // Пользовательские метрики в формате JSON
+}
+
+// Модель логов активности
+model ActivityLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int?
+  assistantId Int?
+  action      String   // processed, viewed, etc.
+  details     String?  @db.Text
+  timestamp   DateTime @default(now())
+  ipAddress   String?
+  userAgent   String?
+
+  // Отношения
+  user      User?      @relation("UserActivityLogs", fields: [userId], references: [id])
+  assistant Assistant? @relation("AssistantActivityLogs", fields: [assistantId], references: [id])
+}
+
+// Модель реферальных транзакций
+model ReferralTransaction {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  amount             Float
+  referrerId         Int?
+  managerId          Int?
+  referralCommission Float?
+  managerCommission  Float?
+  status             String   // pending, processed, cancelled
+  description        String?
+  createdAt          DateTime @default(now())
+  processedAt        DateTime?
+
+  // Отношения
+  user     User  @relation("UserTransactions", fields: [userId], references: [id])
+  referrer User? @relation("ReferrerTransactions", fields: [referrerId], references: [id])
+  manager  User? @relation("ManagerTransactions", fields: [managerId], references: [id])
+}
